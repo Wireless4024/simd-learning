@@ -7,6 +7,7 @@
 #![feature(const_eval_select)]
 #![feature(const_pointer_is_aligned)]
 #![feature(stdarch_x86_avx512)]
+#![feature(strict_provenance)]
 
 pub mod buffer;
 mod parser;

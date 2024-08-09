@@ -10,7 +10,7 @@ use simd_http::utils::{avx, simd};
 use simd_http::utils::simd::iter::SimdFindIter;
 
 static DATA: &[u8] = b"HTTP/1.1\r\nHost: developer.mozilla.org\r\nAccept-Language: fr\r\nUser-Agent: curl/7.64.1\r\nAccept: */*\r\nScheme: http\r\nCache-Control: max-age=0\r\nUpgrade-Insecure-Requests: 1\r\nConnection: keep-alive\r\nSec-Ch-Ua-Arch: x86\r\nSec-Ch-Ua-Mobile: ?0\r\nUser-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36\r\nAccept-Encoding: gzip, deflate, br\r\nSec-Fetch-Site: same-origin\r\nSec-Fetch-Mode: cors\r\nSec-Fetch-Dest: empty\r\nSec-Fetch-User: ?1\r\nSec-Fetch-User: ?1\r\nAccept-Language: en-US,en;q=0.9\r\n\r\n";
-static NEEDLE: &[u8] = b"e: en-";
+static NEEDLE: &[u8] = b"e: e";
 const WHERE: usize = 514;
 
 #[bench]
@@ -66,10 +66,11 @@ fn simd_index_of_single_iter(b: &mut test::Bencher) {
 fn avx512_index_of(b: &mut test::Bencher) {
     let vector = black_box(DATA);
     let needle = black_box(NEEDLE);
+    let mut buffer = unsafe { Buffer::allocate_unchecked(1024, 4096) };
+    buffer.copy_from_slice(vector);
+    let buffer = black_box(buffer);
     b.iter(|| {
-        let mut buffer = unsafe { Buffer::allocate_unchecked(1024, 4096) };
-        buffer.copy_from_slice(vector);
-        let idx = unsafe { avx::search::index_of8(&buffer, needle) };
+        let idx = unsafe { avx::search::index_of4(&buffer, needle) };
         assert_eq!(WHERE, idx);
     });
 }

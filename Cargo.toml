@@ -10,12 +10,12 @@ path = "bin/example.rs"
 [dependencies]
 monoio = { version = "0.2.3", default-features = false, features = ["iouring"] }
 thiserror = "1.0.63"
-
-[dev-dependencies]
 memchr = "2.6.4"
 
+[dev-dependencies]
+
 [profile.dev]
-#opt-level = 2
+opt-level = 3
 debug-assertions = false
 overflow-checks = false
 strip = false
