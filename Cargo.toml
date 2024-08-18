@@ -15,9 +15,10 @@ memchr = "2.6.4"
 [dev-dependencies]
 
 [profile.dev]
-opt-level = 3
+opt-level = 0
 debug-assertions = false
 overflow-checks = false
+lto = "thin"
 strip = false
 debug = "full"
 

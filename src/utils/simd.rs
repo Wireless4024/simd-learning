@@ -4,7 +4,6 @@ use std::simd::cmp::SimdPartialEq;
 
 pub mod aligned;
 pub mod iter;
-mod search;
 
 #[inline]
 fn pad_right_zero_runtime<const LANES: usize>(simd: Simd<u8, LANES>, to_index: usize) -> Simd<u8, LANES>
@@ -57,7 +56,7 @@ pub fn mask_false<const LANES: usize>(count: usize) -> Mask<i8, LANES>
 where
     LaneCount<LANES>: SupportedLaneCount,
 {
-    Mask::from_bitmask(u64::MAX - ((1 << count) - 1))
+    Mask::from_bitmask(!((1 << count) - 1))
 }
 
 #[inline]

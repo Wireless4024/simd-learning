@@ -1,11 +1,13 @@
-use std::alloc::Layout;
-use std::ffi::CStr;
-use std::hint::assert_unchecked;
-use std::ops::{Deref, DerefMut};
-use std::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
-use std::simd::cmp::SimdPartialEq;
-
 use monoio::buf::{IoBuf, IoBufMut};
+use std::alloc::Layout;
+use std::borrow::Cow;
+use std::ffi::CStr;
+use std::fmt::{Debug, Formatter};
+use std::hint::assert_unchecked;
+use std::mem::ManuallyDrop;
+use std::ops::{Deref, DerefMut, Index};
+use std::simd::cmp::SimdPartialEq;
+use std::simd::{LaneCount, Simd, SimdElement, SupportedLaneCount};
 
 use crate::utils::alloc::{alloc_u8_aligned, dealloc_u8_aligned};
 
@@ -14,106 +16,60 @@ pub mod buffer_pool;
 pub const ALIGN: usize = 4096;
 
 #[derive(Debug)]
-#[repr(align(16))]
-pub struct Buffer {
+#[repr(transparent)]
+pub struct Buffer<const LEN: usize, const ALIGN: usize = 4096> {
     ptr: *mut u8,
-    offset: u32,
-    len: u32,
-    capacity: u32,
-    align: u32,
 }
 
-impl Buffer {
-    pub fn allocate(len: u32) -> Option<Self> {
-        let len = len.next_power_of_two();
-        if len == 0 {
-            None
-        } else {
-            // # Safety
-            // Len is power of two.
-            Some(unsafe { Self::allocate_unchecked(len, ALIGN) })
+impl<const LEN: usize> Buffer<LEN, 4096> {
+    #[inline(always)]
+    pub fn allocate4k() -> Buffer<LEN, 4096> {
+        Buffer::allocate()
+    }
+}
+
+impl<const LEN: usize, const ALIGN: usize> Buffer<LEN, ALIGN> {
+    #[inline(always)]
+    pub fn allocate() -> Self {
+        if !ALIGN.is_power_of_two() {
+            let next_power_of_two = ALIGN.next_power_of_two();
+            panic!("ALIGN was {ALIGN} but must be power of two, next power of two is {next_power_of_two}");
         }
+        unsafe { Self::allocate_unchecked() }
     }
 
     /// # Safety
-    pub unsafe fn allocate_unchecked(len: u32, align: usize) -> Self {
-        let ptr = alloc_u8_aligned(len as usize, align);
+    #[inline(always)]
+    pub unsafe fn allocate_unchecked() -> Self {
+        let ptr = alloc_u8_aligned(LEN, ALIGN);
         Self {
             ptr,
-            len,
-            offset: 0,
-            capacity: len,
-            align: ALIGN as _,
         }
     }
 
+    #[inline(always)]
+    pub fn fill(&mut self, value: u8) {
+        unsafe {
+            std::ptr::write_bytes(self.ptr, value, LEN);
+        }
+    }
+
+    #[inline(always)]
     pub const fn layout(&self) -> Layout {
-        unsafe { Layout::from_size_align_unchecked(self.len as _, self.align as _) }
-    }
-
-    /// # Safety
-    /// This function is unsafe because it does not check the length of the buffer.
-    pub unsafe fn set_len(&mut self, len: u32) {
-        self.len = len;
-    }
-
-    /// # Safety
-    /// This function is unsafe because it does not check the length of the buffer.
-    pub unsafe fn set_offset(&mut self, offset: u32) {
-        self.offset = offset;
-    }
-
-    pub const fn ptr(&self) -> *mut u8 {
-        unsafe { self.ptr.add(self.offset as usize) }
+        unsafe { Layout::from_size_align_unchecked(LEN, ALIGN) }
     }
 
     pub fn copy_from_slice(&mut self, data: &[u8]) {
         unsafe {
-            let len = (self.capacity as usize).min(data.len());
-            std::ptr::copy(data.as_ptr(), self.ptr(), len);
-            self.offset = 0;
-            self.len = len as u32;
+            let len = LEN.min(data.len());
+            std::ptr::copy_nonoverlapping(data.as_ptr(), self.ptr, len);
         }
-    }
-
-    pub fn set_empty(&mut self) {
-        self.len = 0;
-    }
-
-    pub fn reset(&mut self) {
-        self.offset = 0;
-        self.len = self.capacity;
-    }
-
-    pub fn flip(&mut self) {
-        self.offset = 0;
-    }
-
-    pub fn put(&mut self, value: &[u8]) -> u32 {
-        unsafe {
-            let len = self.len;
-            let remain = (self.capacity - self.offset).min(value.len() as u32);
-            std::ptr::copy(value.as_ptr(), self.ptr(), remain as usize);
-            self.offset += remain;
-            self.len += remain;
-            remain
-        }
-    }
-
-    /// # Safety
-    /// This function is unsafe because it does not check the length of the buffer.
-    /// but allow alignment optimization such as SIMD to do aligned load.
-    #[inline]
-    pub const unsafe fn assert_aligned(self, size: usize, align: usize) -> Buffer {
-        assert_unchecked(self.ptr.is_aligned_to(align));
-        assert_unchecked(self.capacity as usize == size);
-        self
     }
 
     /// # Safety
     /// Caller must ensure block * LANES is less than the buffer length.
-    #[inline]
-    pub unsafe fn load_simd<T, const LANES: usize>(&self, block: usize) -> Simd<T, LANES>
+    #[inline(always)]
+    pub const unsafe fn load_simd<T, const LANES: usize>(&self, block: usize) -> Simd<T, LANES>
     where
         LaneCount<LANES>: SupportedLaneCount,
         T: SimdElement,
@@ -126,8 +82,8 @@ impl Buffer {
 
     /// # Safety
     /// Caller must ensure block * LANES is less than the buffer length.
-    #[inline]
-    pub unsafe fn store_simd<const LANES: usize>(&self, block: usize, value: Simd<u8, LANES>)
+    #[inline(always)]
+    pub const unsafe fn store_simd<const LANES: usize>(&self, block: usize, value: Simd<u8, LANES>)
     where
         LaneCount<LANES>: SupportedLaneCount,
     {
@@ -165,51 +121,157 @@ impl Buffer {
         let ptr = self.ptr.add(LANES * block);
         CStr::from_bytes_with_nul_unchecked(std::slice::from_raw_parts(ptr, len))
     }
+
+    #[inline(always)]
+    pub const fn ptr_cast<T>(&self) -> *mut T {
+        self.ptr as *mut T
+    }
+
+    #[inline(always)]
+    pub const fn ptr_size<T>(&self) -> usize {
+        LEN / size_of::<T>()
+    }
+
+    #[inline(always)]
+    pub const fn slice(self, offset: usize) -> BufferSlice<LEN, ALIGN> {
+        BufferSlice::new(self, offset as _, (LEN - offset) as _)
+    }
+
+    #[inline(always)]
+    pub const unsafe fn with_alignment<const NEW_ALIGN: usize>(self) -> Buffer<LEN, NEW_ALIGN> {
+        let ptr = self.ptr;
+        assert_unchecked(ptr.is_aligned_to(NEW_ALIGN));
+        let _ = ManuallyDrop::new(self);
+        Buffer {
+            ptr,
+        }
+    }
 }
 
-impl Drop for Buffer {
+impl<const LEN: usize, const ALIGN: usize> Drop for Buffer<LEN, ALIGN> {
+    #[inline]
     fn drop(&mut self) {
         unsafe {
-            dealloc_u8_aligned(self.ptr, self.len as usize, self.align as usize);
+            dealloc_u8_aligned(self.ptr, LEN, ALIGN);
         }
     }
 }
 
-impl Deref for Buffer {
+pub struct BufferSlice<const LEN: usize, const ALIGN: usize> {
+    buffer: Buffer<LEN, ALIGN>,
+    offset: u32,
+    len: u32,
+}
+
+impl<const LEN: usize, const ALIGN: usize> Debug for BufferSlice<LEN, ALIGN> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries(self.iter())
+            .finish()
+    }
+}
+
+impl<const LEN: usize, const ALIGN: usize> BufferSlice<LEN, ALIGN> {
+    pub const fn new(buffer: Buffer<LEN, ALIGN>, offset: u32, len: u32) -> Self {
+        Self { buffer, offset, len }
+    }
+
+    pub fn from_slice(slice: &[u8]) -> Self {
+        let mut buffer = Buffer::<LEN, ALIGN>::allocate();
+        let len = slice.len().min(LEN);
+        buffer.copy_from_slice(slice);
+        Self::new(buffer, 0, len as _)
+    }
+
+    pub fn as_str(&self) -> Cow<'_, str> {
+        String::from_utf8_lossy(self)
+    }
+
+    #[inline(always)]
+    pub fn buffer(&self) -> &Buffer<LEN, ALIGN> {
+        &self.buffer
+    }
+
+    #[inline(always)]
+    pub fn offset(&self) -> usize {
+        self.offset as _
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.len as _
+    }
+
+    #[inline]
+    pub fn set_len(&mut self, len: u32) {
+        if len > self.capacity() as u32 {
+            panic!("len {len} is greater than capacity {}", self.capacity());
+        }
+        unsafe { self.set_len_unchecked(len); }
+    }
+
+    #[inline(always)]
+    pub unsafe fn set_len_unchecked(&mut self, len: u32) {
+        self.len = len;
+    }
+
+    #[inline(always)]
+    pub fn capacity(&self) -> usize {
+        LEN - self.offset()
+    }
+
+    #[inline(always)]
+    pub unsafe fn ptr(&self) -> *mut u8 {
+        self.buffer.ptr.add(self.offset as _)
+    }
+
+    #[inline(always)]
+    pub fn into_inner(self) -> Buffer<LEN, ALIGN> {
+        self.buffer
+    }
+}
+
+impl<const LEN: usize, const ALIGN: usize> Deref for BufferSlice<LEN, ALIGN> {
     type Target = [u8];
 
+    #[inline(always)]
     fn deref(&self) -> &Self::Target {
-        unsafe {
-            std::slice::from_raw_parts(self.ptr(), self.len as _)
-        }
+        unsafe { std::slice::from_raw_parts(self.buffer.ptr.add(self.offset()), self.len()) }
     }
 }
 
-impl DerefMut for Buffer {
+impl<const LEN: usize, const ALIGN: usize> DerefMut for BufferSlice<LEN, ALIGN> {
+    #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { std::slice::from_raw_parts_mut(self.ptr(), self.len as _) }
+        unsafe { std::slice::from_raw_parts_mut(self.buffer.ptr.add(self.offset()), self.len()) }
     }
 }
 
-unsafe impl IoBuf for Buffer {
+unsafe impl<const LEN: usize, const ALIGN: usize> IoBuf for BufferSlice<LEN, ALIGN> {
+    #[inline(always)]
     fn read_ptr(&self) -> *const u8 {
-        self.ptr()
+        unsafe { self.ptr() }
     }
 
+    #[inline(always)]
     fn bytes_init(&self) -> usize {
-        (self.len - self.offset) as _
+        self.len as _
     }
 }
-unsafe impl IoBufMut for Buffer {
+
+unsafe impl<const LEN: usize, const ALIGN: usize> IoBufMut for BufferSlice<LEN, ALIGN> {
+    #[inline(always)]
     fn write_ptr(&mut self) -> *mut u8 {
-        self.ptr()
+        unsafe { self.ptr() }
     }
 
+    #[inline(always)]
     fn bytes_total(&mut self) -> usize {
-        (self.capacity - self.offset) as _
+        self.capacity()
     }
 
+    #[inline(always)]
     unsafe fn set_init(&mut self, pos: usize) {
-        self.len = self.offset + pos as u32;
+        self.set_len_unchecked(pos as _);
     }
 }

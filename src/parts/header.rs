@@ -1,19 +1,22 @@
+use crate::utils::ascii::simd_lowercase;
+use crate::utils::simd::aligned::Aligned32;
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash, Hasher};
 use std::hint::assert_unchecked;
 use std::mem::transmute;
 use std::ops::{Deref, DerefMut};
-use std::simd::{u64x8, u8x64};
 use std::simd::num::SimdUint;
+use std::simd::Simd;
 
-use crate::utils::ascii::simd_lowercase;
-use crate::utils::simd::aligned::Aligned64;
+// AVX2
+const MAX_HEADER_KEY_LENGTH: usize = 32;
+type InnerValue = Aligned32;
 
 #[derive(Eq)]
-pub struct AlignedHeaderKey(pub Aligned64);
+pub struct AlignedHeaderKey(pub InnerValue);
 
 impl Deref for AlignedHeaderKey {
-    type Target = [u8; 64];
+    type Target = [u8; MAX_HEADER_KEY_LENGTH];
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -28,15 +31,18 @@ impl DerefMut for AlignedHeaderKey {
 
 impl AlignedHeaderKey {
     pub const fn default() -> Self {
-        Self(Aligned64::default())
+        Self(InnerValue::default())
     }
 
+
+    /// # Note
+    /// This function will strip value longer than [MAX_HEADER_KEY_LENGTH] bytes.
     #[inline]
     pub const fn new(value: &[u8]) -> Self {
         let key = AlignedHeaderKey::default();
         unsafe {
             std::ptr::copy_nonoverlapping(value.as_ptr(), key.0.0.as_ptr() as *mut u8, value.len());
-            let lowered = simd_lowercase(u8x64::from_array(key.0.0));
+            let lowered = simd_lowercase(Simd::from_array(key.0.0));
             std::ptr::copy_nonoverlapping(lowered.as_array().as_ptr(), key.0.0.as_ptr() as *mut u8, lowered.len());
         }
         key
@@ -76,24 +82,25 @@ impl Hasher for HeaderHasher {
         self.0
     }
 
-    /// bytes must have 64 bits alignment
+    /// bytes must have [MAX_HEADER_KEY_LENGTH] bits alignment
+    #[inline]
     fn write(&mut self, bytes: &[u8]) {
         // # Safety
-        // value is 64 bits aligned from AlignedHeaderKey and has 64 bytes length.
+        // value is [MAX_HEADER_KEY_LENGTH] bits aligned from AlignedHeaderKey and has [MAX_HEADER_KEY_LENGTH] bytes length.
         unsafe {
-            assert_unchecked(bytes.as_ptr().is_aligned_to(64));
-            assert_unchecked(bytes.len() == 64);
+            assert_unchecked(bytes.as_ptr().is_aligned_to(MAX_HEADER_KEY_LENGTH));
+            assert_unchecked(bytes.len() == MAX_HEADER_KEY_LENGTH);
         }
-        let mut buffer = [0u8; 64];
+        let mut buffer = [0u8; MAX_HEADER_KEY_LENGTH];
         buffer.copy_from_slice(bytes);
-        let vector = u8x64::from_array(buffer);
+        let vector = Simd::from_array(buffer);
         unsafe {
-            self.0 = transmute::<u8x64, u64x8>(vector).reduce_sum() + self.0.swap_bytes();
+            self.0 = transmute::<_, Simd<u64, { MAX_HEADER_KEY_LENGTH / 8 }>>(vector).reduce_sum() + self.0;
         }
     }
 
     fn write_length_prefix(&mut self, len: usize) {
-        self.0 = len as u64;
+        self.0 = len.swap_bytes() as u64;
     }
 }
 #[derive(Default)]

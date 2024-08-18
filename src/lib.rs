@@ -13,5 +13,5 @@ pub mod buffer;
 mod parser;
 pub mod utils;
 mod parts;
-mod limit;
-mod offset;
+pub mod limit;
+pub mod offset;

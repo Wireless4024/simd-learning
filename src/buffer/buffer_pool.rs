@@ -1,22 +1,23 @@
 use std::cell::UnsafeCell;
 use std::collections::VecDeque;
-use std::hint::assert_unchecked;
 
 use super::Buffer;
 
-pub struct BufferPool {
-    size: u32,
-    align: u32,
-    buffers: UnsafeCell<VecDeque<Buffer>>,
+pub struct BufferPool<const SIZE: usize, const ALIGN: usize> {
+    buffers: UnsafeCell<VecDeque<Buffer<SIZE, ALIGN>>>,
     // !Send
     _marker: std::marker::PhantomData<*mut ()>,
 }
 
-impl BufferPool {
-    pub const fn new(size: u32, align: usize) -> Self {
+impl BufferPool<0, 4096> {
+    pub const fn new4k<const SIZE: usize>() -> BufferPool<SIZE, 4096> {
+        BufferPool::default()
+    }
+}
+
+impl<const SIZE: usize, const ALIGN: usize> BufferPool<SIZE, ALIGN> {
+    pub const fn default() -> Self {
         Self {
-            size: size.next_power_of_two(),
-            align: align as u32,
             buffers: UnsafeCell::new(VecDeque::new()),
             _marker: std::marker::PhantomData,
         }
@@ -29,40 +30,30 @@ impl BufferPool {
         let buffer = self.buffer();
         buffer.reserve(amount);
         for _ in buffer.len()..amount {
-            buffer.push_back(Buffer::allocate_unchecked(self.size, self.align as usize));
+            buffer.push_back(Buffer::allocate_unchecked());
         }
     }
 
     #[allow(clippy::mut_from_ref)]
-    unsafe fn buffer(&self) -> &mut VecDeque<Buffer> {
+    unsafe fn buffer(&self) -> &mut VecDeque<Buffer<SIZE, ALIGN>> {
         &mut *self.buffers.get()
     }
 
     /// # Safety
     /// Caller must ensure size and align are power of two.
     /// Take buffer with size and alignment garanteed to be the same as the pool.
-    pub unsafe fn take(&self) -> Buffer {
+    pub unsafe fn take(&self) -> Buffer<SIZE, ALIGN> {
         if let Some(buffer) = self.buffer().pop_front() {
-            buffer.assert_aligned(self.size as usize, self.align as usize)
+            buffer
         } else {
-            Buffer::allocate_unchecked(self.size, self.align as usize)
-                .assert_aligned(self.size as usize, self.align as usize)
+            Buffer::allocate_unchecked()
         }
     }
 
     /// # Safety
     /// buffer must have same size and alignment as the pool.
-    pub unsafe fn put(&self, buffer: Buffer) {
+    pub unsafe fn put(&self, buffer: Buffer<SIZE, ALIGN>) {
         self.buffer().push_back(buffer);
-    }
-
-    /// # Safety
-    /// This function is unsafe because it does not check the length of the buffer.
-    /// but allow alignment optimization such as SIMD to do aligned load.
-    #[inline]
-    pub const unsafe fn assert_aligned(&self, size: usize, align: usize) {
-        assert_unchecked(self.size as usize == size);
-        assert_unchecked(self.align as usize == align);
     }
 }
 
@@ -72,31 +63,10 @@ mod tests {
 
     #[test]
     fn test_pre_allocate() {
-        let pool = BufferPool::new(4096, 4096);
+        let pool = BufferPool::new4k::<8192>();
         unsafe {
             pool.pre_allocate(10);
             assert_eq!(pool.buffer().len(), 10);
-        }
-    }
-
-    #[test]
-    fn test_take() {
-        let pool = BufferPool::new(4096, 4096);
-        unsafe {
-            pool.pre_allocate(10);
-            for _ in 0..10 {
-                assert_eq!(pool.take().len(), 4096);
-            }
-        }
-
-        let pool = BufferPool::new(4096, 4096);
-        unsafe {
-            pool.pre_allocate(10);
-            for _ in 0..10 {
-                assert_eq!(pool.take().len(), 4096);
-                pool.put(pool.take());
-            }
-            assert_eq!(pool.buffer().len(), 0);
         }
     }
 }

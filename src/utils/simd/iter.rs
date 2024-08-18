@@ -1,6 +1,6 @@
 use std::hint::assert_unchecked;
-use std::simd::{Simd, u8x8};
 use std::simd::cmp::SimdPartialEq;
+use std::simd::{u8x8, Simd};
 
 use crate::utils::simd;
 
@@ -73,18 +73,15 @@ impl<'a> Iterator for SimdFindIter<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::buffer::Buffer;
+    use crate::buffer::{Buffer, BufferSlice};
 
     use super::*;
 
     #[test]
     fn test() {
         let needle = b"hello";
-        let mut haystack = Buffer::allocate(4096).unwrap();
-        haystack.copy_from_slice(b"hello world hello world hello world");
+        let haystack = BufferSlice::<4096, 4096>::from_slice(b"hello world hello world hello world");
         unsafe {
-            haystack.set_offset(0);
-            haystack.set_len(64);
             let mut iter = SimdFindIter::new(&haystack, needle);
             assert_eq!(iter.next(), Some(0));
             assert_eq!(iter.next(), Some(12));

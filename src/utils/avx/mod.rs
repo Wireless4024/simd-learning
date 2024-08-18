@@ -26,3 +26,11 @@ const POW256: [u64; 8] = [
 pub const fn mask_false_i8x8(count: u32) -> u64 {
     POW256[count as usize]
 }
+
+macro_rules! avx_mask_true {
+    ($count:expr) => {
+        ((1 << $count) - 1)
+    }
+}
+
+pub(crate) use avx_mask_true;
