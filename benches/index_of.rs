@@ -12,16 +12,6 @@ static DATA: &[u8] = b"HTTP/1.1\r\nHost: developer.mozilla.org\r\nAccept-Languag
 static NEEDLE: &[u8; 65] = b"-origin\r\nSec-Fetch-Mode: cors\r\nSec-Fetch-Dest: empty\r\nSec-Fetch-U";
 const WHERE: usize = 406;
 
-#[bench]
-fn slice_index_of(b: &mut test::Bencher) {
-    let data = black_box(DATA);
-    let needle = black_box(NEEDLE);
-    b.iter(|| {
-        let result = black_box(data.windows(black_box(needle.len())).position(|subslice| black_box(subslice) == needle));
-        assert_eq!(result, Some(WHERE));
-    });
-}
-
 macro_rules! avx_search_n {
     ($name:ident,$len:literal) => {
         #[bench]
@@ -110,26 +100,26 @@ avx_search_n!(avx512_index_of_02, 2);
 slice_window_search_n!(slice_window_index_of_03, 3);
 memmem_search_n!(memmem_index_of_03, 3);
 avx_search_n!(avx512_index_of_03, 3);
-//
-// slice_window_search_n!(slice_window_index_of_04, 4);
-// memmem_search_n!(memmem_index_of_04, 4);
-// avx_search_n!(avx512_index_of_04, 4);
-//
-// slice_window_search_n!(slice_window_index_of_05, 5);
-// memmem_search_n!(memmem_index_of_05, 5);
-// avx_search_n!(avx512_index_of_05, 5);
-//
-// slice_window_search_n!(slice_window_index_of_06, 6);
-// memmem_search_n!(memmem_index_of_06, 6);
-// avx_search_n!(avx512_index_of_06, 6);
-//
-// slice_window_search_n!(slice_window_index_of_07, 7);
-// memmem_search_n!(memmem_index_of_07, 7);
-// avx_search_n!(avx512_index_of_07, 7);
-//
-// slice_window_search_n!(slice_window_index_of_08, 8);
-// memmem_search_n!(memmem_index_of_08, 8);
-// avx_search_n!(avx512_index_of_08, 8);
+
+slice_window_search_n!(slice_window_index_of_04, 4);
+memmem_search_n!(memmem_index_of_04, 4);
+avx_search_n!(avx512_index_of_04, 4);
+
+slice_window_search_n!(slice_window_index_of_05, 5);
+memmem_search_n!(memmem_index_of_05, 5);
+avx_search_n!(avx512_index_of_05, 5);
+
+slice_window_search_n!(slice_window_index_of_06, 6);
+memmem_search_n!(memmem_index_of_06, 6);
+avx_search_n!(avx512_index_of_06, 6);
+
+slice_window_search_n!(slice_window_index_of_07, 7);
+memmem_search_n!(memmem_index_of_07, 7);
+avx_search_n!(avx512_index_of_07, 7);
+
+slice_window_search_n!(slice_window_index_of_08, 8);
+memmem_search_n!(memmem_index_of_08, 8);
+avx_search_n!(avx512_index_of_08, 8);
 //
 // slice_window_search_n!(slice_window_index_of_09, 9);
 // memmem_search_n!(memmem_index_of_09, 9);

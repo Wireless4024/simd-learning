@@ -11,16 +11,23 @@ path = "bin/example.rs"
 monoio = { version = "0.2.3", default-features = false, features = ["iouring"] }
 thiserror = "1.0.63"
 memchr = "2.6.4"
+bytes = "1.7.1"
 
 [dev-dependencies]
 
 [profile.dev]
-opt-level = 0
-debug-assertions = false
-overflow-checks = false
-lto = "thin"
+opt-level = 3
+debug-assertions = true
+overflow-checks = true
+lto = "off"
 strip = false
 debug = "full"
 
 [profile.release]
 opt-level = 3
+debug-assertions = false
+overflow-checks = false
+incremental = true
+lto = "thin"
+strip = true
+debug = "full"

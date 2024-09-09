@@ -20,7 +20,7 @@ where
 {
     let mut lower_mask = bytes.to_array();
     let mut i = 0;
-    while i < 64 {
+    while i < LANES {
         lower_mask[i] = lower_mask[i].to_ascii_lowercase();
         i += 1;
     }

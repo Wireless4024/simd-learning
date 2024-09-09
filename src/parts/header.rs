@@ -39,11 +39,11 @@ impl AlignedHeaderKey {
     /// This function will strip value longer than [MAX_HEADER_KEY_LENGTH] bytes.
     #[inline]
     pub const fn new(value: &[u8]) -> Self {
-        let key = AlignedHeaderKey::default();
+        let mut key = AlignedHeaderKey::default();
         unsafe {
-            std::ptr::copy_nonoverlapping(value.as_ptr(), key.0.0.as_ptr() as *mut u8, value.len());
+            std::ptr::copy_nonoverlapping(value.as_ptr(), key.0.0.as_mut_ptr(), value.len());
             let lowered = simd_lowercase(Simd::from_array(key.0.0));
-            std::ptr::copy_nonoverlapping(lowered.as_array().as_ptr(), key.0.0.as_ptr() as *mut u8, lowered.len());
+            std::ptr::copy_nonoverlapping(lowered.as_array().as_ptr(), key.0.0.as_mut_ptr(), lowered.len());
         }
         key
     }

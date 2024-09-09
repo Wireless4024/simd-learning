@@ -42,6 +42,7 @@ impl<const LEN: usize, const ALIGN: usize> Buffer<LEN, ALIGN> {
     #[inline(always)]
     pub unsafe fn allocate_unchecked() -> Self {
         let ptr = alloc_u8_aligned(LEN, ALIGN);
+        std::ptr::write_bytes(ptr, 0, LEN);
         Self {
             ptr,
         }

@@ -26,7 +26,7 @@ where
         array[i] = source[i];
         i += 1;
     }
-    while i < 64 {
+    while i < LANES {
         array[i] = 0;
         i += 1;
     }
@@ -71,7 +71,7 @@ where
         array[i] = 0;
         i += 1;
     }
-    while i < 64 {
+    while i < LANES {
         array[i] = source[i];
         i += 1;
     }

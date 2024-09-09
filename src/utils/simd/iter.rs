@@ -73,7 +73,7 @@ impl<'a> Iterator for SimdFindIter<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::buffer::{Buffer, BufferSlice};
+    use crate::buffer::BufferSlice;
 
     use super::*;
 
