@@ -11,7 +11,7 @@ path = "bin/example.rs"
 monoio = { version = "0.2.3", default-features = false, features = ["iouring"] }
 thiserror = "1.0.63"
 memchr = "2.6.4"
-bytes = "1.7.1"
+bytes = "1.11.1"
 
 [dev-dependencies]
 
